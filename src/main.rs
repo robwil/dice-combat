@@ -32,9 +32,27 @@ fn window_conf() -> Conf {
 
 struct Character {
     name: String,
-    hp: u32,
-    heavy_attack: u32,
-    defend: u32,
+    dice: Vec<usize>, // TODO: for now, dice are just numbers. In future, they will be some struct representing the exact dice numbers and colors.
+    hp: usize,
+    heavy_attack: usize,
+    defend: usize,
+}
+
+struct DiceRoll {
+    dice: Vec<usize>,
+}
+
+enum CombatPhase {
+    // Draft, // TODO: implement draft mode
+    Roll,
+    SelectAction,
+    Action(CombatAction),
+}
+
+enum CombatAction {
+    LightAttack(DiceRoll),
+    HeavyAttack(DiceRoll),
+    Defend(DiceRoll),
 }
 
 #[macroquad::main(window_conf)]
@@ -97,13 +115,14 @@ async fn main() {
         .build();
     dispatcher.setup(&mut world);
 
-    let mut dice: Vec<String> = vec![];
+    let mut dice: Vec<usize> = vec![];
     let mut characters: Vec<Character> = vec![
-        Character{name: "Player".to_owned(), hp: 100, heavy_attack: 0, defend: 0},
-        Character{name: "Goblin 1".to_owned(), hp: 20, heavy_attack: 0, defend: 0},
-        Character{name: "Goblin 2".to_owned(), hp: 20, heavy_attack: 0, defend: 0},
+        Character{name: "Player".to_owned(), dice: vec![6, 6], hp: 100, heavy_attack: 0, defend: 0},
+        Character{name: "Goblin 1".to_owned(), dice: vec![4, 4], hp: 50, heavy_attack: 0, defend: 0},
+        Character{name: "Goblin 2".to_owned(), dice: vec![4, 4], hp: 50, heavy_attack: 0, defend: 0},
     ];
     let mut current_character = 0;
+    let mut current_phase = CombatPhase::Roll;
 
     loop {
         clear_background(BLACK);
@@ -122,6 +141,10 @@ async fn main() {
         // }
         // event_queue.events = (*event_queue.new_events).to_vec();
         // event_queue.new_events.clear();
+
+        if current_character >= characters.len() {
+            current_character = 0;
+        }
 
         draw_window(
             hash!(),
@@ -151,23 +174,37 @@ async fn main() {
             |ui| {
                 Group::new(hash!(), Vector2::new(180., 380.)).ui(ui, |ui| {
                     // TODO: show/hide buttons based on combat phase
-                    if Button::new("Roll").position(Vector2::new(5., 10.)).size(Vector2::new(50., 30.)).ui(ui) {
-                        dice.clear();
-                        // 2d6
-                        dice.push(format!("{}", qrand::gen_range(1, 7)));
-                        dice.push(format!("{}", qrand::gen_range(1, 7)));
-                        dice.push(format!("{}", qrand::gen_range(1, 7)));
-                    }
-                    if Button::new("Light Attack").position(Vector2::new(5., 45.)).size(Vector2::new(160., 30.)).ui(ui) {
-                    }
-                    if Button::new("Heavy Attack").position(Vector2::new(5., 80.)).size(Vector2::new(160., 30.)).ui(ui) {
-                    }
-                    if Button::new("Defend").position(Vector2::new(5., 115.)).size(Vector2::new(160., 30.)).ui(ui) {
+                    match current_phase {
+                        CombatPhase::Roll => {
+                            if Button::new("Roll").position(Vector2::new(5., 10.)).size(Vector2::new(50., 30.)).ui(ui) {
+                                dice.clear();
+                                for die in characters[current_character].dice.iter() {
+                                    dice.push(qrand::gen_range(1, die + 1));
+                                }
+                                current_phase = CombatPhase::SelectAction;
+                            }
+                        },
+                        CombatPhase::SelectAction => {
+                            if Button::new("Light Attack").position(Vector2::new(5., 10.)).size(Vector2::new(160., 30.)).ui(ui) {
+                                current_phase = CombatPhase::Action(CombatAction::LightAttack(DiceRoll{dice: dice.clone()}));
+                            }
+                            if Button::new("Heavy Attack").position(Vector2::new(5., 45.)).size(Vector2::new(160., 30.)).ui(ui) {
+                                characters[current_character].heavy_attack += dice.iter().sum::<usize>();
+                                current_phase = CombatPhase::Roll;
+                                current_character += 1;
+                            }
+                            if Button::new("Defend").position(Vector2::new(5., 80.)).size(Vector2::new(160., 30.)).ui(ui) {
+                                characters[current_character].defend += dice.iter().sum::<usize>();
+                                current_phase = CombatPhase::Roll;
+                                current_character += 1;
+                            }
+                        },
+                        _ => {}
                     }
                 });
                 Group::new(hash!(), Vector2::new(176., 380.)).ui(ui, |ui| {
                     for (n, item) in dice.iter().enumerate() {
-                        Group::new(hash!("inventory", n), Vector2::new(50., 50.))
+                        Group::new(hash!("dice", n), Vector2::new(50., 50.))
                             .ui(ui, |ui| {
                                 ui.label(Vector2::new(5., 10.), &format!("  {}", &item));
                             });
@@ -193,11 +230,22 @@ async fn main() {
                     ui.label(Vector2::new(205., 10.), "H Atk");
                     ui.label(Vector2::new(305., 10.), "Def");
                 });
-                for (n, character) in characters.iter().enumerate() {
+                for (n, character) in characters.iter_mut().enumerate() {
                     Group::new(hash!("character_status", n), Vector2::new(350., 50.))
                         .ui(ui, |ui| {
-                            ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
-                            ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
+                            if let CombatPhase::Action(combat_action) = &current_phase {
+                                if n == current_character {
+                                    ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
+                                } else if Button::new(&format!("{}", &character.name)).position(Vector2::new(5., 10.)).size(Vector2::new(100., 30.)).ui(ui) {
+                                    if let CombatAction::LightAttack(dice_roll) = combat_action {
+                                        character.hp -= dice_roll.dice.iter().sum::<usize>();
+                                        current_phase = CombatPhase::Roll;
+                                        current_character += 1;
+                                    }
+                                }
+                            } else {
+                                ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
+                            }
                             ui.label(Vector2::new(105., 10.), &format!("{}", &character.hp));
                             ui.label(Vector2::new(205., 10.), &format!("{}", &character.heavy_attack));
                             ui.label(Vector2::new(305., 10.), &format!("{}", &character.defend));
