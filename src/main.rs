@@ -1,21 +1,19 @@
-use crate::systems::UiSystem;
 use crate::combat_state::CombatState;
 use crate::combatant::create_combatants;
 use crate::components::*;
 use crate::constants::FONT_SIZE;
-use crate::megaui::widgets::Button;
-use crate::megaui::widgets::Group;
+use crate::events::EventQueue;
 use crate::megaui::Style;
-use crate::megaui::Vector2;
+use crate::systems::DraftingSystem;
+use crate::systems::RollingSystem;
+use crate::systems::UiSystem;
 use macroquad::prelude::*;
 use megaui::Color;
 use megaui::FontAtlas;
-use megaui_macroquad::draw_window;
 use megaui_macroquad::set_ui_style;
-use megaui_macroquad::WindowParams;
 use megaui_macroquad::{
     draw_megaui,
-    megaui::{self, hash},
+    megaui::{self},
     set_font_atlas,
 };
 use quad_rand as qrand;
@@ -27,6 +25,7 @@ mod combat_state;
 mod combatant;
 mod components;
 mod constants;
+mod events;
 mod systems;
 
 fn window_conf() -> Conf {
@@ -70,8 +69,8 @@ async fn main() {
         ..Default::default()
     });
     // need to recreate font_atlas that got moved above, so we can use it below
-    let font_atlas =
-        FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
+    // let font_atlas =
+    //     FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
 
     // Setup specs world
     let mut world = World::new();
@@ -83,13 +82,13 @@ async fn main() {
     world.register::<DicePool>();
     let combatants = create_combatants(&mut world);
 
-    let mut combat_state = CombatState::new(combatants);
+    let combat_state = CombatState::new(combatants);
 
     // Insert global resources
     world.insert(combat_state);
-    // world.insert(EventQueue {
-    //     ..Default::default()
-    // });
+    world.insert(EventQueue {
+        ..Default::default()
+    });
     // world.insert(UiState {
     //     font_atlas,
     //     dialog_box: None,
@@ -97,16 +96,9 @@ async fn main() {
 
     // Dispatcher setup will register all systems and do other setup
     let mut dispatcher = DispatcherBuilder::new()
-        // .with(InputSystem, "input", &[])
-        // .with(ActionSystem, "action", &[])
-        // .with(
-        //     RenderingSystem {
-        //         ..Default::default()
-        //     },
-        //     "rendering",
-        //     &[],
-        // )
         .with(UiSystem, "ui", &[])
+        .with(DraftingSystem, "drafting", &[])
+        .with(RollingSystem, "rolling", &[])
         .build();
     dispatcher.setup(&mut world);
 
@@ -123,17 +115,15 @@ async fn main() {
         world.maintain();
 
         // handle events
-        // let mut event_queue = world.write_resource::<EventQueue>();
-        // if !event_queue.events.is_empty() {
-        //     println!("current events: {:?}", event_queue.events);
-        // }
-        // if !event_queue.new_events.is_empty() {
-        //     println!("new events: {:?}", event_queue.new_events);
-        // }
-        // event_queue.events = (*event_queue.new_events).to_vec();
-        // event_queue.new_events.clear();
-
-        
+        let mut event_queue = world.write_resource::<EventQueue>();
+        if !event_queue.events.is_empty() {
+            println!("current events: {:?}", event_queue.events);
+        }
+        if !event_queue.new_events.is_empty() {
+            println!("new events: {:?}", event_queue.new_events);
+        }
+        event_queue.events = (*event_queue.new_events).to_vec();
+        event_queue.new_events.clear();
 
         draw_megaui();
 

@@ -1,7 +1,7 @@
 use specs::Entity;
 
 pub enum CombatPhase {
-    // Draft, // TODO: implement draft mode
+    Drafting,
     Roll,
     SelectAction,
     Action(/*CombatAction*/),
@@ -24,7 +24,7 @@ impl CombatState {
         CombatState {
             current_character: 0,
             combatants,
-            current_phase: CombatPhase::Roll,
+            current_phase: CombatPhase::Drafting,
         }
     }
 }

@@ -1,45 +1,50 @@
-use crate::components::Named;
+use crate::combat_state::CombatPhase;
+use crate::combat_state::CombatState;
+use crate::components::Defender;
+use crate::components::DicePool;
 use crate::components::Health;
 use crate::components::HeavyAttacker;
-use crate::components::Defender;
+use crate::components::Named;
+use crate::events::Event;
+use crate::EventQueue;
 use specs::ReadStorage;
-use crate::combat_state::CombatState;
-use crate::combat_state::CombatPhase;
-use macroquad::prelude::is_key_pressed;
-use macroquad::prelude::KeyCode;
 
 use specs::System;
 use specs::WriteExpect;
 
 use crate::megaui::widgets::Button;
 use crate::megaui::widgets::Group;
-use crate::megaui::Style;
 use crate::megaui::Vector2;
 use macroquad::prelude::*;
-use megaui::Color;
-use megaui::FontAtlas;
 use megaui_macroquad::draw_window;
-use megaui_macroquad::set_ui_style;
+use megaui_macroquad::megaui::hash;
 use megaui_macroquad::WindowParams;
-use megaui_macroquad::{
-    draw_megaui,
-    megaui::{self, hash},
-    set_font_atlas,
-};
 
 pub struct UiSystem;
 
 impl<'a> System<'a> for UiSystem {
+    #[allow(clippy::type_complexity)]
     type SystemData = (
         ReadStorage<'a, Named>,
         ReadStorage<'a, Health>,
         ReadStorage<'a, HeavyAttacker>,
         ReadStorage<'a, Defender>,
+        ReadStorage<'a, DicePool>,
         WriteExpect<'a, CombatState>,
+        WriteExpect<'a, EventQueue>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (names, healths, heavy_attackers, defenders, mut combat_state,) = data;
+        let (
+            names,
+            healths,
+            _heavy_attackers,
+            _defenders,
+            dice_pools,
+            mut combat_state,
+            mut event_queue,
+        ) = data;
+        let current_entity = combat_state.combatants[combat_state.current_character];
 
         draw_window(
             hash!(),
@@ -54,7 +59,7 @@ impl<'a> System<'a> for UiSystem {
             |ui| {
                 ui.label(
                     Vector2::new(5., 0.),
-                    &format!("Current Turn: {}", names.get(combat_state.combatants[combat_state.current_character]).unwrap().name),
+                    &format!("Current Turn: {}", names.get(current_entity).unwrap().name),
                 );
             },
         );
@@ -70,62 +75,99 @@ impl<'a> System<'a> for UiSystem {
                 ..Default::default()
             },
             |ui| {
-                Group::new(hash!(), Vector2::new(180., 380.)).ui(ui, |ui| match combat_state.current_phase {
-                    CombatPhase::Roll => {
-                        if Button::new("Roll")
-                            .position(Vector2::new(5., 10.))
-                            .size(Vector2::new(50., 30.))
-                            .ui(ui)
-                        {
-                            // dice.clear();
-                            // for die in characters[current_character].dice.iter() {
-                            //     dice.push(qrand::gen_range(1, die + 1));
-                            // }
-                            // current_phase = CombatPhase::SelectAction;
+                Group::new(hash!(), Vector2::new(180., 380.)).ui(ui, |ui| {
+                    match combat_state.current_phase {
+                        CombatPhase::Drafting => {
+                            ui.label(
+                                Vector2::new(5., 10.),
+                                &format!(
+                                    "Draft {} dice to roll",
+                                    dice_pools.get(current_entity).unwrap().max_draft_amount
+                                ),
+                            );
+                            if Button::new("Finish drafting")
+                                .position(Vector2::new(5., 50.))
+                                .size(Vector2::new(160., 30.))
+                                .ui(ui)
+                            {
+                                combat_state.current_phase = CombatPhase::Roll;
+                            }
                         }
+                        CombatPhase::Roll => {
+                            if Button::new("Roll")
+                                .position(Vector2::new(5., 10.))
+                                .size(Vector2::new(50., 30.))
+                                .ui(ui)
+                            {
+                                event_queue.new_events.push(Event::RollDice);
+                            }
+                        }
+                        CombatPhase::SelectAction => {
+                            if Button::new("Light Attack")
+                                .position(Vector2::new(5., 10.))
+                                .size(Vector2::new(160., 30.))
+                                .ui(ui)
+                            {
+                                // current_phase =
+                                //     CombatPhase::Action(CombatAction::LightAttack(DiceRoll {
+                                //         dice: dice.clone(),
+                                //     }));
+                            }
+                            if Button::new("Heavy Attack")
+                                .position(Vector2::new(5., 45.))
+                                .size(Vector2::new(160., 30.))
+                                .ui(ui)
+                            {
+                                // characters[current_character].heavy_attack +=
+                                //     dice.iter().sum::<usize>();
+                                // current_phase = CombatPhase::Roll;
+                                // dice = vec![];
+                                // current_character += 1;
+                            }
+                            if Button::new("Defend")
+                                .position(Vector2::new(5., 80.))
+                                .size(Vector2::new(160., 30.))
+                                .ui(ui)
+                            {
+                                // characters[current_character].defend += dice.iter().sum::<usize>();
+                                // current_phase = CombatPhase::Roll;
+                                // dice = vec![];
+                                // current_character += 1;
+                            }
+                        }
+                        _ => {}
                     }
-                    CombatPhase::SelectAction => {
-                        if Button::new("Light Attack")
-                            .position(Vector2::new(5., 10.))
-                            .size(Vector2::new(160., 30.))
-                            .ui(ui)
-                        {
-                            // current_phase =
-                            //     CombatPhase::Action(CombatAction::LightAttack(DiceRoll {
-                            //         dice: dice.clone(),
-                            //     }));
-                        }
-                        if Button::new("Heavy Attack")
-                            .position(Vector2::new(5., 45.))
-                            .size(Vector2::new(160., 30.))
-                            .ui(ui)
-                        {
-                            // characters[current_character].heavy_attack +=
-                            //     dice.iter().sum::<usize>();
-                            // current_phase = CombatPhase::Roll;
-                            // dice = vec![];
-                            // current_character += 1;
-                        }
-                        if Button::new("Defend")
-                            .position(Vector2::new(5., 80.))
-                            .size(Vector2::new(160., 30.))
-                            .ui(ui)
-                        {
-                            // characters[current_character].defend += dice.iter().sum::<usize>();
-                            // current_phase = CombatPhase::Roll;
-                            // dice = vec![];
-                            // current_character += 1;
-                        }
-                    }
-                    _ => {}
                 });
                 Group::new(hash!(), Vector2::new(176., 380.)).ui(ui, |ui| {
-                    // TODO: how to get dice
-                    // for (n, item) in dice.iter().enumerate() {
-                    //     Group::new(hash!("dice", n), Vector2::new(50., 50.)).ui(ui, |ui| {
-                    //         ui.label(Vector2::new(5., 10.), &format!("  {}", &item));
-                    //     });
-                    // }
+                    match combat_state.current_phase {
+                        CombatPhase::Drafting => {
+                            let available_dice = &dice_pools.get(current_entity).unwrap().available;
+                            for (n, die) in available_dice.iter().enumerate() {
+                                if Button::new(&format!("{}", &die))
+                                    .size(Vector2::new(50., 50.))
+                                    .ui(ui)
+                                {
+                                    event_queue.new_events.push(Event::DraftDie(n))
+                                }
+                            }
+                        }
+                        CombatPhase::Roll => {
+                            let drafted_dice = &dice_pools.get(current_entity).unwrap().drafted;
+                            for (n, die) in drafted_dice.iter().enumerate() {
+                                Group::new(hash!("dice", n), Vector2::new(50., 50.)).ui(ui, |ui| {
+                                    ui.label(Vector2::new(5., 10.), &format!("{}", &die));
+                                });
+                            }
+                        }
+                        _ => {
+                            let rolled_dice = &dice_pools.get(current_entity).unwrap().rolled;
+                            for (n, die) in rolled_dice.iter().enumerate() {
+                                Group::new(hash!("dice", n), Vector2::new(50., 50.)).ui(ui, |ui| {
+                                    ui.label(Vector2::new(5., 10.), &format!("{}", &die));
+                                });
+                            }
+                        }
+                    }
                 });
             },
         );
@@ -172,9 +214,15 @@ impl<'a> System<'a> for UiSystem {
                             //         }
                             //     }
                             // } else {
-                            ui.label(Vector2::new(5., 10.), &format!("{}", &names.get(*character).unwrap().name));
+                            ui.label(
+                                Vector2::new(5., 10.),
+                                &names.get(*character).unwrap().name.to_string(),
+                            );
                             // }
-                            ui.label(Vector2::new(105., 10.), &format!("{}", &healths.get(*character).unwrap().hp));
+                            ui.label(
+                                Vector2::new(105., 10.),
+                                &format!("{}", &healths.get(*character).unwrap().hp),
+                            );
                             // TODO: deal with these optionals
                             // ui.label(
                             //     Vector2::new(205., 10.),
