@@ -1,3 +1,7 @@
+use crate::components::Named;
+use specs::ReadStorage;
+use crate::log::CombatLog;
+use specs::WriteExpect;
 use crate::combat_state::CombatState;
 use crate::components::DicePool;
 use crate::events::Event;
@@ -12,12 +16,14 @@ pub struct DraftingSystem;
 impl<'a> System<'a> for DraftingSystem {
     type SystemData = (
         ReadExpect<'a, EventQueue>,
+        ReadStorage<'a, Named>,
         WriteStorage<'a, DicePool>,
         ReadExpect<'a, CombatState>,
+        WriteExpect<'a, CombatLog>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (event_queue, mut dice_pools, combat_state) = data;
+        let (event_queue, names, mut dice_pools, combat_state, mut combat_log) = data;
         let current_entity = combat_state.combatants[combat_state.current_character];
 
         for event in event_queue.events.iter() {
@@ -26,6 +32,7 @@ impl<'a> System<'a> for DraftingSystem {
                 if dice_pool.drafted.len() < dice_pool.max_draft_amount {
                     let die = dice_pool.available.remove(*n);
                     dice_pool.drafted.push(die);
+                    combat_log.add(format!("{} drafted {}", names.get(current_entity).unwrap().name, die));
                 }
             }
         }

@@ -1,3 +1,4 @@
+use crate::log::CombatLog;
 use crate::combat_state::CombatState;
 use crate::combatant::create_combatants;
 use crate::components::*;
@@ -26,6 +27,7 @@ mod combatant;
 mod components;
 mod constants;
 mod events;
+mod log;
 mod systems;
 
 fn window_conf() -> Conf {
@@ -89,10 +91,9 @@ async fn main() {
     world.insert(EventQueue {
         ..Default::default()
     });
-    // world.insert(UiState {
-    //     font_atlas,
-    //     dialog_box: None,
-    // });
+    world.insert(CombatLog {
+        ..Default::default()
+    });
 
     // Dispatcher setup will register all systems and do other setup
     let mut dispatcher = DispatcherBuilder::new()

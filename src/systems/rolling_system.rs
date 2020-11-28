@@ -1,3 +1,6 @@
+use crate::components::Named;
+use specs::ReadStorage;
+use crate::log::CombatLog;
 use crate::combat_state::CombatPhase;
 use crate::combat_state::CombatState;
 use crate::components::DicePool;
@@ -15,12 +18,14 @@ pub struct RollingSystem;
 impl<'a> System<'a> for RollingSystem {
     type SystemData = (
         ReadExpect<'a, EventQueue>,
+        ReadStorage<'a, Named>,
         WriteStorage<'a, DicePool>,
         WriteExpect<'a, CombatState>,
+        WriteExpect<'a, CombatLog>,
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (event_queue, mut dice_pools, mut combat_state) = data;
+        let (event_queue, names, mut dice_pools, mut combat_state, mut combat_log) = data;
         let current_entity = combat_state.combatants[combat_state.current_character];
 
         for event in event_queue.events.iter() {
@@ -33,6 +38,10 @@ impl<'a> System<'a> for RollingSystem {
                 }
                 dice_pool.drafted.clear();
                 combat_state.current_phase = CombatPhase::SelectAction;
+                combat_log.add(format!("{} rolled [{}]",
+                    names.get(current_entity).unwrap().name,
+                    dice_pool.rolled.iter().map(|die| { die.to_string() }).collect::<Vec<String>>().join(",")
+                ));
             }
         }
     }

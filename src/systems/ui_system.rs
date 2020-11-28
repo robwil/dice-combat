@@ -1,3 +1,5 @@
+use crate::log::CombatLog;
+use specs::ReadExpect;
 use crate::combat_state::CombatPhase;
 use crate::combat_state::CombatState;
 use crate::components::Defender;
@@ -30,6 +32,7 @@ impl<'a> System<'a> for UiSystem {
         ReadStorage<'a, HeavyAttacker>,
         ReadStorage<'a, Defender>,
         ReadStorage<'a, DicePool>,
+        ReadExpect<'a, CombatLog>,
         WriteExpect<'a, CombatState>,
         WriteExpect<'a, EventQueue>,
     );
@@ -41,6 +44,7 @@ impl<'a> System<'a> for UiSystem {
             _heavy_attackers,
             _defenders,
             dice_pools,
+            combat_log,
             mut combat_state,
             mut event_queue,
         ) = data;
@@ -49,7 +53,7 @@ impl<'a> System<'a> for UiSystem {
         draw_window(
             hash!(),
             vec2(10., 10.),
-            vec2(600., 40.),
+            vec2(780., 40.),
             WindowParams {
                 titlebar: false,
                 close_button: false,
@@ -67,7 +71,7 @@ impl<'a> System<'a> for UiSystem {
         draw_window(
             hash!(),
             vec2(10., 60.),
-            vec2(380., 420.),
+            vec2(390., 420.),
             WindowParams {
                 label: "Dice Area".to_string(),
                 close_button: false,
@@ -173,7 +177,7 @@ impl<'a> System<'a> for UiSystem {
         );
         draw_window(
             hash!(),
-            vec2(400., 60.),
+            vec2(410., 60.),
             vec2(380., 420.),
             WindowParams {
                 label: "Status".to_string(),
@@ -233,6 +237,22 @@ impl<'a> System<'a> for UiSystem {
                     );
                 }
             },
+        );
+        draw_window(
+            hash!(),
+            vec2(10., 500.),
+            vec2(780., 280.),
+            WindowParams {
+                label: "Combat Log".to_string(),
+                close_button: false,
+                movable: false,
+                ..Default::default()
+            },
+            |ui| {
+                for (i, log) in combat_log.logs.iter().rev().enumerate() {
+                    ui.label(Vector2::new(10., (i * 30) as f32), log);
+                }
+            }
         );
     }
 }
