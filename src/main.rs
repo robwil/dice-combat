@@ -1,25 +1,35 @@
-use crate::megaui::widgets::Button;
-use crate::megaui::Vector2;
-use crate::megaui::widgets::Group;
-use megaui_macroquad::WindowParams;
-use megaui_macroquad::draw_window;
-use crate::megaui::Style;
+use crate::combat_state::CombatState;
+use crate::combatant::create_combatants;
+use crate::components::*;
 use crate::constants::FONT_SIZE;
+use crate::events::EventQueue;
+use crate::log::CombatLog;
+use crate::megaui::Style;
+use crate::systems::ActionSystem;
+use crate::systems::DraftingSystem;
+use crate::systems::RollingSystem;
+use crate::systems::UiSystem;
 use macroquad::prelude::*;
 use megaui::Color;
 use megaui::FontAtlas;
 use megaui_macroquad::set_ui_style;
 use megaui_macroquad::{
     draw_megaui,
-    megaui::{self, hash},
+    megaui::{self},
     set_font_atlas,
 };
+use quad_rand as qrand;
 use specs::DispatcherBuilder;
 use specs::{World, WorldExt};
-use quad_rand as qrand;
-use std::time::{SystemTime};
+use std::time::SystemTime;
 
+mod combat_state;
+mod combatant;
+mod components;
 mod constants;
+mod events;
+mod log;
+mod systems;
 
 fn window_conf() -> Conf {
     Conf {
@@ -30,35 +40,12 @@ fn window_conf() -> Conf {
     }
 }
 
-struct Character {
-    name: String,
-    dice: Vec<usize>, // TODO: for now, dice are just numbers. In future, they will be some struct representing the exact dice numbers and colors.
-    hp: usize,
-    heavy_attack: usize,
-    defend: usize,
-}
-
-struct DiceRoll {
-    dice: Vec<usize>,
-}
-
-enum CombatPhase {
-    // Draft, // TODO: implement draft mode
-    Roll,
-    SelectAction,
-    Action(CombatAction),
-}
-
-enum CombatAction {
-    LightAttack(DiceRoll),
-    HeavyAttack(DiceRoll),
-    Defend(DiceRoll),
-}
-
 #[macroquad::main(window_conf)]
 async fn main() {
     // seed random to current timestamp
-    let time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap();
+    let time = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap();
     qrand::srand(time.as_secs());
 
     // setup UI style
@@ -85,44 +72,38 @@ async fn main() {
         ..Default::default()
     });
     // need to recreate font_atlas that got moved above, so we can use it below
-    let font_atlas =
-        FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
+    // let font_atlas =
+    //     FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
 
     // Setup specs world
     let mut world = World::new();
+    world.register::<Named>();
+    world.register::<Health>();
+    world.register::<LightAttacker>();
+    world.register::<HeavyAttacker>();
+    world.register::<Defender>();
+    world.register::<DicePool>();
+    let combatants = create_combatants(&mut world);
+
+    let combat_state = CombatState::new(combatants);
 
     // Insert global resources
-    // world.insert(EventQueue {
-    //     ..Default::default()
-    // });
-    // world.insert(UiState {
-    //     font_atlas,
-    //     dialog_box: None,
-    // });
+    world.insert(combat_state);
+    world.insert(EventQueue {
+        ..Default::default()
+    });
+    world.insert(CombatLog {
+        ..Default::default()
+    });
 
     // Dispatcher setup will register all systems and do other setup
     let mut dispatcher = DispatcherBuilder::new()
-        // .with(InputSystem, "input", &[])
-        // .with(ActionSystem, "action", &[])
-        // .with(
-        //     RenderingSystem {
-        //         ..Default::default()
-        //     },
-        //     "rendering",
-        //     &[],
-        // )
-        // .with(UiSystem, "ui", &["rendering"])
+        .with(UiSystem, "ui", &[])
+        .with(DraftingSystem, "drafting", &[])
+        .with(RollingSystem, "rolling", &[])
+        .with(ActionSystem, "action", &[])
         .build();
     dispatcher.setup(&mut world);
-
-    let mut dice: Vec<usize> = vec![];
-    let mut characters: Vec<Character> = vec![
-        Character{name: "Player".to_owned(), dice: vec![6, 6], hp: 100, heavy_attack: 0, defend: 0},
-        Character{name: "Goblin 1".to_owned(), dice: vec![4, 4], hp: 50, heavy_attack: 0, defend: 0},
-        Character{name: "Goblin 2".to_owned(), dice: vec![4, 4], hp: 50, heavy_attack: 0, defend: 0},
-    ];
-    let mut current_character = 0;
-    let mut current_phase = CombatPhase::Roll;
 
     loop {
         clear_background(BLACK);
@@ -132,127 +113,15 @@ async fn main() {
         world.maintain();
 
         // handle events
-        // let mut event_queue = world.write_resource::<EventQueue>();
-        // if !event_queue.events.is_empty() {
-        //     println!("current events: {:?}", event_queue.events);
-        // }
-        // if !event_queue.new_events.is_empty() {
-        //     println!("new events: {:?}", event_queue.new_events);
-        // }
-        // event_queue.events = (*event_queue.new_events).to_vec();
-        // event_queue.new_events.clear();
-
-        if current_character >= characters.len() {
-            current_character = 0;
+        let mut event_queue = world.write_resource::<EventQueue>();
+        if !event_queue.events.is_empty() {
+            println!("current events: {:?}", event_queue.events);
         }
-
-        draw_window(
-            hash!(),
-            vec2(10., 10.),
-            vec2(600., 40.),
-            WindowParams {
-                titlebar: false,
-                close_button: false,
-                movable: false,
-                ..Default::default()
-            },
-            |ui| {
-                ui.label(Vector2::new(5., 0.), &format!("Current Turn: {}", characters[current_character].name));
-            }
-        );
-
-        draw_window(
-            hash!(),
-            vec2(10., 60.),
-            vec2(380., 420.),
-            WindowParams {
-                label: "Dice Area".to_string(),
-                close_button: false,
-                movable: false,
-                ..Default::default()
-            },
-            |ui| {
-                Group::new(hash!(), Vector2::new(180., 380.)).ui(ui, |ui| {
-                    // TODO: show/hide buttons based on combat phase
-                    match current_phase {
-                        CombatPhase::Roll => {
-                            if Button::new("Roll").position(Vector2::new(5., 10.)).size(Vector2::new(50., 30.)).ui(ui) {
-                                dice.clear();
-                                for die in characters[current_character].dice.iter() {
-                                    dice.push(qrand::gen_range(1, die + 1));
-                                }
-                                current_phase = CombatPhase::SelectAction;
-                            }
-                        },
-                        CombatPhase::SelectAction => {
-                            if Button::new("Light Attack").position(Vector2::new(5., 10.)).size(Vector2::new(160., 30.)).ui(ui) {
-                                current_phase = CombatPhase::Action(CombatAction::LightAttack(DiceRoll{dice: dice.clone()}));
-                            }
-                            if Button::new("Heavy Attack").position(Vector2::new(5., 45.)).size(Vector2::new(160., 30.)).ui(ui) {
-                                characters[current_character].heavy_attack += dice.iter().sum::<usize>();
-                                current_phase = CombatPhase::Roll;
-                                current_character += 1;
-                            }
-                            if Button::new("Defend").position(Vector2::new(5., 80.)).size(Vector2::new(160., 30.)).ui(ui) {
-                                characters[current_character].defend += dice.iter().sum::<usize>();
-                                current_phase = CombatPhase::Roll;
-                                current_character += 1;
-                            }
-                        },
-                        _ => {}
-                    }
-                });
-                Group::new(hash!(), Vector2::new(176., 380.)).ui(ui, |ui| {
-                    for (n, item) in dice.iter().enumerate() {
-                        Group::new(hash!("dice", n), Vector2::new(50., 50.))
-                            .ui(ui, |ui| {
-                                ui.label(Vector2::new(5., 10.), &format!("  {}", &item));
-                            });
-                    }
-                });
-            },
-        );
-        draw_window(
-            hash!(),
-            vec2(400., 60.),
-            vec2(380., 420.),
-            WindowParams {
-                label: "Status".to_string(),
-                close_button: false,
-                movable: false,
-                ..Default::default()
-            },
-            |ui| {
-                Group::new(hash!("character_status_header"), Vector2::new(350., 50.))
-                .ui(ui, |ui| {
-                    ui.label(Vector2::new(5., 10.), "Name");
-                    ui.label(Vector2::new(105., 10.), "HP");
-                    ui.label(Vector2::new(205., 10.), "H Atk");
-                    ui.label(Vector2::new(305., 10.), "Def");
-                });
-                for (n, character) in characters.iter_mut().enumerate() {
-                    Group::new(hash!("character_status", n), Vector2::new(350., 50.))
-                        .ui(ui, |ui| {
-                            if let CombatPhase::Action(combat_action) = &current_phase {
-                                if n == current_character {
-                                    ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
-                                } else if Button::new(&format!("{}", &character.name)).position(Vector2::new(5., 10.)).size(Vector2::new(100., 30.)).ui(ui) {
-                                    if let CombatAction::LightAttack(dice_roll) = combat_action {
-                                        character.hp -= dice_roll.dice.iter().sum::<usize>();
-                                        current_phase = CombatPhase::Roll;
-                                        current_character += 1;
-                                    }
-                                }
-                            } else {
-                                ui.label(Vector2::new(5., 10.), &format!("{}", &character.name));
-                            }
-                            ui.label(Vector2::new(105., 10.), &format!("{}", &character.hp));
-                            ui.label(Vector2::new(205., 10.), &format!("{}", &character.heavy_attack));
-                            ui.label(Vector2::new(305., 10.), &format!("{}", &character.defend));
-                        });
-                }
-            },
-        );
+        if !event_queue.new_events.is_empty() {
+            println!("new events: {:?}", event_queue.new_events);
+        }
+        event_queue.events = (*event_queue.new_events).to_vec();
+        event_queue.new_events.clear();
 
         draw_megaui();
 
