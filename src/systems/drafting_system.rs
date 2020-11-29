@@ -51,6 +51,7 @@ impl<'a> System<'a> for DraftingSystem {
         }
 
         for event in event_queue.events.iter() {
+            // TODO: this is warning only because we have just one event. in the future we should have more events, so going to leave this as is for now.
             if let Event::DraftDie(n) = event {
                 if let Some(dice_pool) = dice_pools.get_mut(current_entity) {
                     if dice_pool.drafted.len() < dice_pool.max_draft_amount {

@@ -6,7 +6,6 @@ use crate::components::DicePool;
 use crate::components::Die;
 use crate::components::Health;
 use crate::components::HeavyAttacker;
-use crate::components::LightAttacker;
 use crate::components::Named;
 use crate::events::Event;
 use crate::log::CombatLog;
@@ -19,7 +18,6 @@ use specs::WriteExpect;
 
 use crate::megaui::widgets::Button;
 use crate::megaui::widgets::Group;
-use crate::megaui::Color;
 use crate::megaui::Layout;
 use crate::megaui::Vector2;
 use macroquad::prelude::*;
@@ -34,7 +32,6 @@ impl<'a> System<'a> for UiSystem {
     type SystemData = (
         ReadStorage<'a, Named>,
         ReadStorage<'a, Health>,
-        ReadStorage<'a, LightAttacker>,
         ReadStorage<'a, HeavyAttacker>,
         ReadStorage<'a, Defender>,
         ReadStorage<'a, DicePool>,
@@ -47,7 +44,6 @@ impl<'a> System<'a> for UiSystem {
         let (
             names,
             healths,
-            light_attackers,
             heavy_attackers,
             defenders,
             dice_pools,
@@ -102,15 +98,6 @@ impl<'a> System<'a> for UiSystem {
                                 .ui(ui)
                             {
                                 combat_state.current_phase = CombatPhase::Roll;
-                            }
-                        }
-                        CombatPhase::Roll => {
-                            if Button::new("Roll")
-                                .position(Vector2::new(5., 10.))
-                                .size(Vector2::new(50., 30.))
-                                .ui(ui)
-                            {
-                                event_queue.new_events.push(Event::RollDice);
                             }
                         }
                         CombatPhase::SelectAction(possible_actions) => {
@@ -185,39 +172,43 @@ impl<'a> System<'a> for UiSystem {
                         ui.label(Vector2::new(305., 10.), "Def");
                     },
                 );
-                for (n, character) in combat_state.combatants.iter_mut().enumerate() {
+                let mut new_phase = None;
+                for (n, character) in combat_state.combatants.iter().enumerate() {
                     Group::new(hash!("character_status", n), Vector2::new(350., 50.)).ui(
                         ui,
                         |ui| {
-                            // if let CombatPhase::Action(combat_action) = &current_phase {
-                            //     if n == current_character {
-                            //         ui.label(
-                            //             Vector2::new(5., 10.),
-                            //             &format!("{}", &character.name),
-                            //         );
-                            //     } else if Button::new(&format!("{}", &character.name))
-                            //         .position(Vector2::new(5., 10.))
-                            //         .size(Vector2::new(100., 30.))
-                            //         .ui(ui)
-                            //     {
-                            //         if let CombatAction::LightAttack(dice_roll) = combat_action {
-                            //             character.hp -= dice_roll.dice.iter().sum::<usize>();
-                            //             current_phase = CombatPhase::Roll;
-                            //             dice = vec![];
-                            //             current_character += 1;
-                            //         }
-                            //     }
-                            // } else {
-
-                            if let Some(name) = names.get(*character) {
-                                ui.label(Vector2::new(5., 10.), &name.name);
+                            // If a combat action has been chosen, the character names shift to buttons used for targeting.
+                            if let CombatPhase::Action(combat_action) = &combat_state.current_phase
+                            {
+                                if let Some(named) = names.get(*character) {
+                                    if n == combat_state.current_character {
+                                        ui.label(Vector2::new(5., 10.), &named.name);
+                                    } else if Button::new(&format!("{}", &named.name))
+                                        .position(Vector2::new(5., 10.))
+                                        .size(Vector2::new(100., 30.))
+                                        .ui(ui)
+                                    {
+                                        new_phase = match combat_action {
+                                            CombatAction::LightAttack(None) => {
+                                                Some(CombatAction::LightAttack(Some(*character)))
+                                            }
+                                            CombatAction::HeavyAttack(None) => {
+                                                Some(CombatAction::HeavyAttack(Some(*character)))
+                                            }
+                                            _ => None,
+                                        };
+                                    }
+                                }
+                            } else {
+                                if let Some(named) = names.get(*character) {
+                                    ui.label(Vector2::new(5., 10.), &named.name);
+                                }
                             }
-                            // }
 
+                            // Status display of current health, prepped heavy attack, prepped defense for each combatant.
                             if let Some(health) = healths.get(*character) {
                                 ui.label(Vector2::new(105., 10.), &format!("{}", health.hp));
                             }
-
                             if let Some(heavy_attacker) = heavy_attackers.get(*character) {
                                 draw_dice_label(
                                     ui,
@@ -225,7 +216,6 @@ impl<'a> System<'a> for UiSystem {
                                     Vector2::new(205., 10.),
                                 );
                             }
-
                             if let Some(defender) = defenders.get(*character) {
                                 draw_dice_label(
                                     ui,
@@ -235,6 +225,9 @@ impl<'a> System<'a> for UiSystem {
                             }
                         },
                     );
+                }
+                if let Some(new_phase) = new_phase {
+                    combat_state.current_phase = CombatPhase::Action(new_phase);
                 }
             },
         );

@@ -2,9 +2,6 @@
 pub enum Event {
     // Draft a die by its position in available_dice of the DicePool
     DraftDie(usize),
-
-    // Roll all dice currently in drafted section of the DicePool
-    RollDice,
 }
 
 // global event queue
