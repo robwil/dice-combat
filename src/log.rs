@@ -1,4 +1,3 @@
-
 #[derive(Default)]
 pub struct CombatLog {
     pub logs: Vec<String>,

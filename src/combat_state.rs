@@ -3,15 +3,17 @@ use specs::Entity;
 pub enum CombatPhase {
     Drafting,
     Roll,
-    SelectAction,
-    Action(/*CombatAction*/),
+    SelectAction(Vec<(String, CombatAction)>),
+    Action(CombatAction),
 }
 
-// enum CombatAction {
-//     LightAttack(DiceRoll),
-//     HeavyAttack(DiceRoll),
-//     Defend(DiceRoll),
-// }
+#[derive(Copy, Clone)]
+pub enum CombatAction {
+    LightAttack(Option<Entity>),
+    PrepHeavyAttack,
+    HeavyAttack(Option<Entity>),
+    Defend,
+}
 
 pub struct CombatState {
     pub current_character: usize,

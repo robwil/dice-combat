@@ -1,10 +1,11 @@
-use crate::log::CombatLog;
 use crate::combat_state::CombatState;
 use crate::combatant::create_combatants;
 use crate::components::*;
 use crate::constants::FONT_SIZE;
 use crate::events::EventQueue;
+use crate::log::CombatLog;
 use crate::megaui::Style;
+use crate::systems::ActionSystem;
 use crate::systems::DraftingSystem;
 use crate::systems::RollingSystem;
 use crate::systems::UiSystem;
@@ -100,16 +101,12 @@ async fn main() {
         .with(UiSystem, "ui", &[])
         .with(DraftingSystem, "drafting", &[])
         .with(RollingSystem, "rolling", &[])
+        .with(ActionSystem, "action", &[])
         .build();
     dispatcher.setup(&mut world);
 
     loop {
         clear_background(BLACK);
-
-        // TODO: find a better place for this to live
-        // if combat_state.current_character >= combat_state.combatants.len() {
-        //     combat_state.current_character = 0;
-        // }
 
         // run ECS systems
         dispatcher.dispatch(&world);

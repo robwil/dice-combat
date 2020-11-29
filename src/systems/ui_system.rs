@@ -1,14 +1,17 @@
-use crate::log::CombatLog;
-use specs::ReadExpect;
+use crate::combat_state::CombatAction;
 use crate::combat_state::CombatPhase;
 use crate::combat_state::CombatState;
 use crate::components::Defender;
 use crate::components::DicePool;
+use crate::components::Die;
 use crate::components::Health;
 use crate::components::HeavyAttacker;
+use crate::components::LightAttacker;
 use crate::components::Named;
 use crate::events::Event;
+use crate::log::CombatLog;
 use crate::EventQueue;
+use specs::ReadExpect;
 use specs::ReadStorage;
 
 use specs::System;
@@ -16,6 +19,8 @@ use specs::WriteExpect;
 
 use crate::megaui::widgets::Button;
 use crate::megaui::widgets::Group;
+use crate::megaui::Color;
+use crate::megaui::Layout;
 use crate::megaui::Vector2;
 use macroquad::prelude::*;
 use megaui_macroquad::draw_window;
@@ -29,6 +34,7 @@ impl<'a> System<'a> for UiSystem {
     type SystemData = (
         ReadStorage<'a, Named>,
         ReadStorage<'a, Health>,
+        ReadStorage<'a, LightAttacker>,
         ReadStorage<'a, HeavyAttacker>,
         ReadStorage<'a, Defender>,
         ReadStorage<'a, DicePool>,
@@ -41,8 +47,9 @@ impl<'a> System<'a> for UiSystem {
         let (
             names,
             healths,
-            _heavy_attackers,
-            _defenders,
+            light_attackers,
+            heavy_attackers,
+            defenders,
             dice_pools,
             combat_log,
             mut combat_state,
@@ -80,7 +87,7 @@ impl<'a> System<'a> for UiSystem {
             },
             |ui| {
                 Group::new(hash!(), Vector2::new(180., 380.)).ui(ui, |ui| {
-                    match combat_state.current_phase {
+                    match &combat_state.current_phase {
                         CombatPhase::Drafting => {
                             ui.label(
                                 Vector2::new(5., 10.),
@@ -106,43 +113,26 @@ impl<'a> System<'a> for UiSystem {
                                 event_queue.new_events.push(Event::RollDice);
                             }
                         }
-                        CombatPhase::SelectAction => {
-                            if Button::new("Light Attack")
-                                .position(Vector2::new(5., 10.))
-                                .size(Vector2::new(160., 30.))
-                                .ui(ui)
-                            {
-                                // current_phase =
-                                //     CombatPhase::Action(CombatAction::LightAttack(DiceRoll {
-                                //         dice: dice.clone(),
-                                //     }));
+                        CombatPhase::SelectAction(possible_actions) => {
+                            let mut new_phase = None;
+                            for (i, (action_name, action)) in possible_actions.iter().enumerate() {
+                                if Button::new(action_name)
+                                    .position(Vector2::new(5., 10. + 35. * i as f32))
+                                    .size(Vector2::new(160., 30.))
+                                    .ui(ui)
+                                {
+                                    new_phase = Some(CombatPhase::Action(*action));
+                                }
                             }
-                            if Button::new("Heavy Attack")
-                                .position(Vector2::new(5., 45.))
-                                .size(Vector2::new(160., 30.))
-                                .ui(ui)
-                            {
-                                // characters[current_character].heavy_attack +=
-                                //     dice.iter().sum::<usize>();
-                                // current_phase = CombatPhase::Roll;
-                                // dice = vec![];
-                                // current_character += 1;
-                            }
-                            if Button::new("Defend")
-                                .position(Vector2::new(5., 80.))
-                                .size(Vector2::new(160., 30.))
-                                .ui(ui)
-                            {
-                                // characters[current_character].defend += dice.iter().sum::<usize>();
-                                // current_phase = CombatPhase::Roll;
-                                // dice = vec![];
-                                // current_character += 1;
+                            if let Some(new_phase) = new_phase {
+                                combat_state.current_phase = new_phase;
                             }
                         }
                         _ => {}
                     }
                 });
                 Group::new(hash!(), Vector2::new(176., 380.)).ui(ui, |ui| {
+                    // TODO: don't use unwrap() so much here, we can use if let Some instead.
                     match combat_state.current_phase {
                         CombatPhase::Drafting => {
                             let available_dice = &dice_pools.get(current_entity).unwrap().available;
@@ -218,21 +208,31 @@ impl<'a> System<'a> for UiSystem {
                             //         }
                             //     }
                             // } else {
-                            ui.label(
-                                Vector2::new(5., 10.),
-                                &names.get(*character).unwrap().name.to_string(),
-                            );
+
+                            if let Some(name) = names.get(*character) {
+                                ui.label(Vector2::new(5., 10.), &name.name);
+                            }
                             // }
-                            ui.label(
-                                Vector2::new(105., 10.),
-                                &format!("{}", &healths.get(*character).unwrap().hp),
-                            );
-                            // TODO: deal with these optionals
-                            // ui.label(
-                            //     Vector2::new(205., 10.),
-                            //     &format!("{}", &heavy_attackers.get(*character).unwrap_or_default().heavy_attack),
-                            // );
-                            // ui.label(Vector2::new(305., 10.), &format!("{}", &character.defend));
+
+                            if let Some(health) = healths.get(*character) {
+                                ui.label(Vector2::new(105., 10.), &format!("{}", health.hp));
+                            }
+
+                            if let Some(heavy_attacker) = heavy_attackers.get(*character) {
+                                draw_dice_label(
+                                    ui,
+                                    &heavy_attacker.prepped_attack,
+                                    Vector2::new(205., 10.),
+                                );
+                            }
+
+                            if let Some(defender) = defenders.get(*character) {
+                                draw_dice_label(
+                                    ui,
+                                    &defender.prepped_defense,
+                                    Vector2::new(305., 10.),
+                                );
+                            }
                         },
                     );
                 }
@@ -252,7 +252,38 @@ impl<'a> System<'a> for UiSystem {
                 for (i, log) in combat_log.logs.iter().rev().enumerate() {
                     ui.label(Vector2::new(10., (i * 30) as f32), log);
                 }
-            }
+            },
         );
+    }
+}
+
+fn draw_dice_label(ui: &mut megaui_macroquad::megaui::Ui, dice: &Vec<Die>, starting_pos: Vector2) {
+    let context = ui.get_active_window_context();
+
+    let mut total_width = 0.;
+    for die in dice {
+        if let Some(rolled_value) = die.rolled_value {
+            let mut size = context
+                .window
+                .draw_commands
+                .label_size(&format!("{}", rolled_value), None);
+
+            let pos = context.window.cursor.fit(
+                size,
+                Some(starting_pos + Vector2::new(total_width, 0.))
+                    .map_or(Layout::Vertical, Layout::Free),
+            ) + Vector2::new(0., context.global_style.margin);
+
+            size.y += context.global_style.margin * 2.;
+
+            if let Some(advance) = context.window.draw_commands.draw_character(
+                // TODO: this only supports single digit dice values at the moment. we should use draw_label if we ever want to support multiple digits
+                (48 + rolled_value) as u8 as char,
+                pos,
+                die.color.into(),
+            ) {
+                total_width += advance;
+            }
+        }
     }
 }

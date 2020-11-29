@@ -246,7 +246,6 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "megaui"
 version = "0.2.14"
-source = "git+https://github.com/robwil/megaui?branch=font-size#fe0e6c292b00b17f87d4191f1f4af51b98331b0c"
 dependencies = [
  "miniquad_text_rusttype",
 ]
