@@ -1,27 +1,16 @@
 use crate::combat_state::CombatState;
 use crate::combatant::create_combatants;
 use crate::components::*;
-use crate::constants::FONT_SIZE;
 use crate::events::EventQueue;
 use crate::log::CombatLog;
-use crate::megaui::Style;
 use crate::systems::ActionSystem;
 use crate::systems::DraftingSystem;
 use crate::systems::RollingSystem;
-use crate::systems::UiSystem;
-use macroquad::prelude::*;
-use megaui::Color;
-use megaui::FontAtlas;
-use megaui_macroquad::set_ui_style;
-use megaui_macroquad::{
-    draw_megaui,
-    megaui::{self},
-    set_font_atlas,
-};
 use quad_rand as qrand;
 use specs::DispatcherBuilder;
 use specs::{World, WorldExt};
 use std::time::SystemTime;
+use ws::{listen, CloseCode, Handler, Message, Request, Response, Result, Sender};
 
 mod combat_state;
 mod combatant;
@@ -29,51 +18,15 @@ mod components;
 mod constants;
 mod events;
 mod log;
+mod shared;
 mod systems;
 
-fn window_conf() -> Conf {
-    Conf {
-        window_title: "Dice Combat".to_owned(),
-        window_width: 800,
-        window_height: 800,
-        ..Default::default()
-    }
-}
-
-#[macroquad::main(window_conf)]
-async fn main() {
+fn main() {
     // seed random to current timestamp
     let time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap();
     qrand::srand(time.as_secs());
-
-    // setup UI style
-    let font_bytes = &include_bytes!("../assets/fonts/Roboto-Bold.ttf")[..];
-    let font_atlas =
-        FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
-    set_font_atlas(font_atlas);
-    set_ui_style(Style {
-        title_height: 32.,
-        margin: 5.,
-        // this style basically sets up no difference between Focused and Inactive, since we have a multi-window interface
-        window_background_focused: Color::from_rgb(0, 0, 150),
-        window_background_inactive: Color::from_rgb(0, 0, 150),
-        focused_title: Color::from_rgb(255, 255, 255),
-        focused_text: Color::from_rgb(255, 255, 255),
-        inactive_title: Color::from_rgb(255, 255, 255),
-        inactive_text: Color::from_rgb(255, 255, 255),
-        group_border_focused: Color::from_rgba(255, 255, 255, 68),
-        group_border_inactive: Color::from_rgba(255, 255, 255, 68),
-        button_background_focused: Color::from_rgba(104, 104, 104, 235),
-        button_background_inactive: Color::from_rgba(104, 104, 104, 235),
-        button_background_focused_hovered: Color::from_rgba(170, 170, 170, 235),
-        button_background_focused_clicked: Color::from_rgba(187, 187, 187, 255),
-        ..Default::default()
-    });
-    // need to recreate font_atlas that got moved above, so we can use it below
-    // let font_atlas =
-    //     FontAtlas::new(font_bytes, FONT_SIZE, FontAtlas::ascii_character_list()).unwrap();
 
     // Setup specs world
     let mut world = World::new();
@@ -98,33 +51,109 @@ async fn main() {
 
     // Dispatcher setup will register all systems and do other setup
     let mut dispatcher = DispatcherBuilder::new()
-        .with(UiSystem, "ui", &[])
         .with(DraftingSystem, "drafting", &[])
         .with(RollingSystem, "rolling", &[])
         .with(ActionSystem, "action", &[])
         .build();
     dispatcher.setup(&mut world);
 
-    loop {
-        clear_background(BLACK);
+    game_loop(&mut dispatcher, &mut world);
 
-        // run ECS systems
-        dispatcher.dispatch(&world);
-        world.maintain();
+    listen("127.0.0.1:9000", |out| Server { out }).unwrap()
+}
 
-        // handle events
-        let mut event_queue = world.write_resource::<EventQueue>();
-        if !event_queue.events.is_empty() {
-            println!("current events: {:?}", event_queue.events);
+struct Server {
+    out: Sender,
+}
+
+impl Handler for Server {
+    fn on_request(&mut self, req: &Request) -> Result<Response> {
+        match req.resource() {
+            "/ws" => Response::from_request(req),
+            _ => Ok(Response::new(
+                200,
+                "OK",
+                b"Websocket server is running".to_vec(),
+            )),
         }
-        if !event_queue.new_events.is_empty() {
-            println!("new events: {:?}", event_queue.new_events);
-        }
-        event_queue.events = (*event_queue.new_events).to_vec();
-        event_queue.new_events.clear();
-
-        draw_megaui();
-
-        next_frame().await;
     }
+
+    // Handle messages recieved in the websocket (in this case, only on `/ws`).
+    fn on_message(&mut self, msg: Message) -> Result<()> {
+        let client_id: usize = self.out.token().into();
+
+        let server_msg = if msg.is_text() {
+            Some(handle_text_message(client_id, msg))
+        } else if msg.is_binary() {
+            Some(handle_binary_message(client_id, msg))
+        } else {
+            None
+        };
+
+        // Broadcast to all connections.
+        server_msg.map_or(Ok(()), |msg| self.out.broadcast(msg))
+    }
+
+    fn on_close(&mut self, code: CloseCode, reason: &str) {
+        let client_id: usize = self.out.token().into();
+        let code_number: u16 = code.into();
+        println!(
+            "WebSocket closing - client: {}, code: {} {:?}, reason: {}",
+            client_id, code_number, code, reason
+        );
+    }
+}
+
+fn handle_text_message(client_id: usize, msg: Message) -> Message {
+    let client_msg: shared::ClientMessage =
+        serde_json::from_str(&msg.into_text().unwrap()).unwrap();
+
+    println!(
+        "Server received text message\ntext: '{}'\nfrom: '{}'\n",
+        client_msg.text, client_id
+    );
+
+    let server_msg: Message = serde_json::to_string(&shared::ServerMessage {
+        id: client_id,
+        text: client_msg.text,
+    })
+    .unwrap()
+    .into();
+
+    server_msg
+}
+
+fn handle_binary_message(client_id: usize, msg: Message) -> Message {
+    let binary_msg: shared::ClientMessage = rmp_serde::from_slice(&msg.into_data()).unwrap();
+
+    println!(
+        "Server received binary message\ntext: '{}'\nfrom: '{}'\n",
+        binary_msg.text, client_id
+    );
+
+    let server_msg: Message = rmp_serde::to_vec(&shared::ServerMessage {
+        id: client_id,
+        text: binary_msg.text,
+    })
+    .unwrap()
+    .into();
+
+    server_msg
+}
+
+fn game_loop(dispatcher: &mut specs::Dispatcher, world: &mut specs::World) {
+    // run ECS systems
+    dispatcher.dispatch(&world);
+    world.maintain();
+
+    // handle events
+    let mut event_queue = world.write_resource::<EventQueue>();
+    if !event_queue.events.is_empty() {
+        println!("current events: {:?}", event_queue.events);
+    }
+    if !event_queue.new_events.is_empty() {
+        println!("new events: {:?}", event_queue.new_events);
+    }
+    event_queue.events = (*event_queue.new_events).to_vec();
+    event_queue.new_events.clear();
 }

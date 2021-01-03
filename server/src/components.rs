@@ -28,16 +28,6 @@ impl Default for Color {
         Color::Colorless
     }
 }
-impl Into<megaui_macroquad::megaui::Color> for Color {
-    fn into(self) -> megaui_macroquad::megaui::Color {
-        match self {
-            Color::Red => megaui_macroquad::megaui::Color::from_rgb(255, 0, 0),
-            Color::Yellow => megaui_macroquad::megaui::Color::from_rgb(255, 255, 0),
-            Color::Blue => megaui_macroquad::megaui::Color::from_rgb(100, 100, 255),
-            Color::Colorless => megaui_macroquad::megaui::Color::from_rgb(255, 255, 255),
-        }
-    }
-}
 
 #[derive(Default, Copy, Clone, Debug)]
 pub struct Die {
