@@ -16,6 +16,7 @@ use specs::System;
 pub struct DraftingSystem;
 
 impl<'a> System<'a> for DraftingSystem {
+    #[allow(clippy::type_complexity)]
     type SystemData = (
         ReadExpect<'a, EventQueue>,
         ReadStorage<'a, Named>,

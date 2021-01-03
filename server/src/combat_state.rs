@@ -1,5 +1,7 @@
+use crate::shared::*;
 use specs::Entity;
 
+#[derive(Debug, Clone)]
 pub enum CombatPhase {
     Drafting,
     Roll,
@@ -7,7 +9,7 @@ pub enum CombatPhase {
     Action(CombatAction),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum CombatAction {
     LightAttack(Option<Entity>),
     PrepHeavyAttack,
@@ -15,10 +17,13 @@ pub enum CombatAction {
     Defend,
 }
 
+#[derive(Debug, Clone)]
 pub struct CombatState {
     pub current_character: usize,
     pub combatants: Vec<Entity>,
     pub current_phase: CombatPhase,
+    // Client-side version of the current state and world, materialized by MaterializeSystem
+    pub materialized_state: ClientGameState,
 }
 
 impl CombatState {
@@ -27,6 +32,12 @@ impl CombatState {
             current_character: 0,
             combatants,
             current_phase: CombatPhase::Drafting,
+            materialized_state: ClientGameState {
+                // These values don't matter, they will get immediately replaced by MaterializeSystem
+                client_phase: ClientPhase::Waiting,
+                combatants: vec![],
+                combat_log: vec![],
+            },
         }
     }
 }

@@ -26,6 +26,7 @@ impl<'a> System<'a> for RollingSystem {
 
         if let CombatPhase::Roll = &combat_state.current_phase {
             if let Some(dice_pool) = dice_pools.get_mut(current_entity) {
+                println!("Player drafted {:?}", dice_pool.drafted);
                 for die in dice_pool.drafted.iter() {
                     let mut rolled_die = *die;
                     rolled_die.rolled_value = Some(qrand::gen_range(1, die.sides + 1));
