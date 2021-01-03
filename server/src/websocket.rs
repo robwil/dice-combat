@@ -1,5 +1,5 @@
+use std::sync::Mutex;
 use ws::Handshake;
-use specs::DispatcherBuilder;
 use crate::components::*;
 use crate::combatant::*;
 use crate::combat_state::*;
@@ -9,18 +9,22 @@ use crate::shared::*;
 use crate::systems::*;
 use specs::World;
 use specs::WorldExt;
+use specs::RunNow;
 use ws::{CloseCode, Handler, Message, Request, Response, Result, Sender};
+use std::sync::Arc;
 
-
-pub struct Server<'a, 'b> {
-    pub out: Sender,
-    pub dispatcher: specs::Dispatcher<'a, 'b>,
+pub struct Server {
     pub world: specs::World,
     // TODO: when we have multi-player, this would be a HashMap<Player, ClientGameState> or something like that
     pub materialized_state: ClientGameState,
 }
 
-impl Handler for Server<'_, '_> {
+pub struct Connection {
+    pub out: Sender,
+    pub server: Arc<Mutex<Server>>,
+}
+
+impl Handler for Connection {
     fn on_request(&mut self, req: &Request) -> Result<Response> {
         match req.resource() {
             "/ws" => Response::from_request(req),
@@ -33,11 +37,12 @@ impl Handler for Server<'_, '_> {
     }
 
     fn on_open(&mut self, _: Handshake) -> Result<()> {
+        let server = self.server.lock().unwrap();
         // send initial state to client
-        let combat_state = self.world.read_resource::<CombatState>();
+        let combat_state = server.world.read_resource::<CombatState>();
         println!("Server state: {:?}", *combat_state);
-        println!("Sending initial state to client: {:?}", self.materialized_state.clone());
-        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(self.materialized_state.clone()))
+        println!("Sending initial state to client: {:?}", server.materialized_state.clone());
+        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
             .unwrap()
             .into();
         self.out.send(server_msg)
@@ -58,9 +63,10 @@ impl Handler for Server<'_, '_> {
 
         println!("Handled client message");
 
-        let combat_state = self.world.read_resource::<CombatState>();
+        let server = self.server.lock().unwrap();
+        let combat_state = server.world.read_resource::<CombatState>();
         println!("Server state: {:?}", *combat_state);
-        println!("Sending new state to client: {:?}", self.materialized_state.clone());
+        println!("Sending new state to client: {:?}", server.materialized_state.clone());
         server_msg.map_or(Ok(()), |msg| self.out.broadcast(msg))
     }
 
@@ -74,8 +80,8 @@ impl Handler for Server<'_, '_> {
     }
 }
 
-impl Server<'_, '_> {
-    pub fn new(out: Sender) -> Self {
+impl Server {
+    pub fn new() -> Self {
         // Setup specs world
         let mut world = World::new();
         world.register::<Named>();
@@ -97,69 +103,32 @@ impl Server<'_, '_> {
             ..Default::default()
         });
 
-        // Dispatcher setup will register all systems and do other setup
-        let mut dispatcher = DispatcherBuilder::new()
-            .with(DraftingSystem, "drafting", &[])
-            .with(RollingSystem, "rolling", &["drafting"])
-            .with(ActionSystem, "action", &[])
-            .with(MaterializeSystem, "materialize", &["drafting", "rolling", "action"])
-            .build();
-        dispatcher.setup(&mut world);
-
         let initial_state = get_materialized_state(&mut world);
         let mut server = Server{
-            out,
-            dispatcher,
             world,
             materialized_state: initial_state,
         };
+
+        println!("CREATED INITIAL GAME WORLD!!!");
 
         server.game_loop();
 
         server
     }
-    fn handle_text_message(&mut self, client_id: usize, msg: Message) -> Message {
-        let txt = &msg.into_text().unwrap();
-        let client_msg: ClientMessage =
-            serde_json::from_str(txt).unwrap();
-    
-        println!(
-            "Server received text message\ntext: '{}'\nfrom: '{}'\n",
-            txt, client_id
-        );
-        
-        // dispatch event/etc. based on incoming message
-        match client_msg {
-            ClientMessage::FinishDrafting(draft_choices) => {
-                // User is finished drafting. Send all their draft choices into our Drafting system.
-                {
-                    let mut event_queue = self.world.write_resource::<EventQueue>();
-                    for choice in draft_choices {
-                        event_queue.new_events.push(Event::DraftDie(choice))
-                    }
-                }
-                // Let game loop process the new drafted dice before transitioning to next phase.
-                self.game_loop();
-                // And then transition the combat phase to Rolling
-                let mut combat_state = self.world.write_resource::<CombatState>();
-                combat_state.current_phase = CombatPhase::Roll
-            }
-        }
 
-        self.game_loop();
-        
-        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(self.materialized_state.clone()))
-            .unwrap()
-            .into();
-
-        server_msg
-    }
     fn game_loop(&mut self) {
         // since some game loop iterations create events that get handled on next iteration,
         // we keep looping until materialized state does not change
         loop {
             // run ECS systems
-            self.dispatcher.dispatch(&self.world);
+            let mut drafting_system = DraftingSystem{};
+            let mut rolling_system = RollingSystem{};
+            let mut action_system = ActionSystem{};
+            let mut materialize_system = MaterializeSystem{};
+            drafting_system.run_now(&self.world);
+            rolling_system.run_now(&self.world);
+            action_system.run_now(&self.world);
+            materialize_system.run_now(&self.world);
             self.world.maintain();
         
             // handle events
@@ -184,6 +153,52 @@ impl Server<'_, '_> {
             }
         }
     }
+}
+
+impl Connection {
+    fn handle_text_message(&mut self, client_id: usize, msg: Message) -> Message {
+        let txt = &msg.into_text().unwrap();
+        let client_msg: ClientMessage =
+            serde_json::from_str(txt).unwrap();
+    
+        println!(
+            "Server received text message\ntext: '{}'\nfrom: '{}'\n",
+            txt, client_id
+        );
+        
+        
+        let mut server = self.server.lock().unwrap();
+    
+        // dispatch event/etc. based on incoming message
+        match client_msg {
+            ClientMessage::FinishDrafting(draft_choices) => {
+                // User is finished drafting. Send all their draft choices into our Drafting system.
+                {
+                    let mut event_queue = server.world.write_resource::<EventQueue>();
+                    // process draft choices in reverse index order so we don't invalidate the indexes
+                    let mut sorted_choices = draft_choices.clone();
+                    sorted_choices.sort_by(|a, b| b.cmp(a));
+                    for choice in sorted_choices {
+                        event_queue.new_events.push(Event::DraftDie(choice));
+                    }
+                }
+                // Let game loop process the new drafted dice before transitioning to next phase.
+                server.game_loop();
+                // And then transition the combat phase to Rolling
+                let mut combat_state = server.world.write_resource::<CombatState>();
+                combat_state.current_phase = CombatPhase::Roll
+            }
+        }
+
+        server.game_loop();
+        
+        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
+            .unwrap()
+            .into();
+
+        server_msg
+    }
+    
 }
 
 fn get_materialized_state(world: &mut specs::World) -> ClientGameState {

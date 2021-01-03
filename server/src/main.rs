@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+use std::sync::Arc;
 use crate::events::EventQueue;
 use quad_rand as qrand;
 use std::time::SystemTime;
@@ -20,5 +22,6 @@ fn main() {
         .unwrap();
     qrand::srand(time.as_secs());
 
-    listen("127.0.0.1:9000", |out| websocket::Server::new(out)).unwrap()
+    let server = Arc::new(Mutex::new(websocket::Server::new()));
+    listen("127.0.0.1:9000", |out| websocket::Connection { server: Arc::clone(&server), out }).unwrap()
 }
