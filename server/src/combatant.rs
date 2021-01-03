@@ -1,3 +1,4 @@
+use crate::shared::Die;
 use crate::components::*;
 use specs::{Builder, Entity, World, WorldExt};
 

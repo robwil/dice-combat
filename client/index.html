@@ -3,7 +3,76 @@
 
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-giJF6kkoqNQ00vy+HMDP7azOuL0xtbfIcaT9wjKHr8RbDVddVHyTfAAsrekwKmP1" crossorigin="anonymous">
+    <style type="text/css">
+        /* CSS dice from https://dev.to/ekeijl/creating-dice-using-css-grid-j4 */
+        .face {
+            display: grid;
+            grid-template-areas:
+                "a . c"
+                "e g f"
+                "d . b";
+
+            flex: 0 0 auto;
+            margin: 16px;
+            padding: 10px;
+            width: 52px;
+            height: 52px;
+            border-radius: 10%;
+            box-shadow: inset 0 3px white, inset 0 -3px #bbb, inset 3px 0 #d7d7d7,
+                inset -3px 0 #d7d7d7;
+        }
+        .face-selected {
+            box-shadow: inset 0 3px #f00, inset 0 -3px #f00, inset 3px 0 #f00,
+                inset -3px 0 #f00;
+        }
+        .face-colorless {
+            background-color: #e7e7e7;
+        }
+        .face-red {
+            background-color: #ffb3ba;
+        }
+        .face-blue {
+            background-color: #bae1ff;
+        }
+        .face-yellow {
+            background-color: #ffffba;
+        }
+        .face-green {
+            background-color: #baffc9;
+        }
+        .pip {
+            display: block;
+            align-self: center;
+            justify-self: center;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #333;
+            box-shadow: inset 0 1px #111, inset 0 -1px #555;
+        }
+        .pip:nth-child(2) {
+            grid-area: b;
+        }
+        .pip:nth-child(3) {
+            grid-area: c;
+        }
+        .pip:nth-child(4) {
+            grid-area: d;
+        }
+        .pip:nth-child(5) {
+            grid-area: e;
+        }
+        .pip:nth-child(6) {
+            grid-area: f;
+        }
+        /* This selects the last pip of odd-valued dice (1, 3, 5) and positions the pip in the center */
+        .pip:nth-child(odd):last-child {
+            grid-area: g;
+        }
+    </style>
+    <title>Dice Combat</title>
 </head>
 
 <body>
@@ -12,6 +81,7 @@
         import init from '/pkg/package.js';
         init('/pkg/package_bg.wasm');
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.0-beta1/dist/js/bootstrap.bundle.min.js" integrity="sha384-ygbV9kiqUc6oa4msXn9868pTtWMgiQaeYH7/t7LECLbyPA2x65Kgf80OJFdroafW" crossorigin="anonymous"></script>
 </body>
 
 </html>
