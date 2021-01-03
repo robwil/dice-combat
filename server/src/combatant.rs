@@ -1,5 +1,5 @@
-use crate::shared::Die;
 use crate::components::*;
+use crate::shared::Die;
 use specs::{Builder, Entity, World, WorldExt};
 
 pub fn create_combatants(world: &mut World) -> Vec<Entity> {

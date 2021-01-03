@@ -1,12 +1,12 @@
-use crate::shared::ClientGameState;
-use crate::shared::ClientCombatant;
-use crate::shared::ClientPhase;
 use crate::combat_state::CombatPhase;
 use crate::combat_state::CombatState;
 use crate::components::DicePool;
 use crate::components::Health;
 use crate::components::Named;
 use crate::log::CombatLog;
+use crate::shared::ClientCombatant;
+use crate::shared::ClientGameState;
+use crate::shared::ClientPhase;
 use specs::ReadExpect;
 use specs::ReadStorage;
 
@@ -26,13 +26,7 @@ impl<'a> System<'a> for MaterializeSystem {
     );
 
     fn run(&mut self, data: Self::SystemData) {
-        let (
-            names,
-            healths,
-            dice_pools,
-            combat_log,
-            mut combat_state,
-        ) = data;
+        let (names, healths, dice_pools, combat_log, mut combat_state) = data;
 
         let current_entity = combat_state.combatants[combat_state.current_character];
 
@@ -45,15 +39,24 @@ impl<'a> System<'a> for MaterializeSystem {
             _ => ClientPhase::Waiting,
         };
 
-        combat_state.materialized_state = ClientGameState{
+        combat_state.materialized_state = ClientGameState {
             client_phase,
-            combatants: combat_state.combatants.iter().flat_map(|combatant| {
-                if let (Some(named), Some(health)) = (names.get(*combatant), healths.get(*combatant)) {
-                    Some(ClientCombatant { name: named.name.clone(), hp: health.hp })
-                } else {
-                    None
-                }
-            }).collect(),
+            combatants: combat_state
+                .combatants
+                .iter()
+                .flat_map(|combatant| {
+                    if let (Some(named), Some(health)) =
+                        (names.get(*combatant), healths.get(*combatant))
+                    {
+                        Some(ClientCombatant {
+                            name: named.name.clone(),
+                            hp: health.hp,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect(),
             combat_log: combat_log.logs.clone(),
         };
     }

@@ -1,9 +1,9 @@
 // TODO: eventually extract to another crate lib, but for now copy-paste between server and client
 
-use std::fmt::Formatter;
-use std::fmt::Display;
-use std::fmt;
 use serde::{Deserialize, Serialize};
+use std::fmt;
+use std::fmt::Display;
+use std::fmt::Formatter;
 
 /// Message from the server to the client is very simple. It just gives entirely new state.
 #[derive(Clone, Serialize, Deserialize)]

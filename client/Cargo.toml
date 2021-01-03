@@ -11,6 +11,8 @@ edition = "2018"
 
 [lib]
 crate-type = ["cdylib"]
+path = "src/client.rs"
+
 
 [dev-dependencies]
 wasm-bindgen-test = "0.3.18"

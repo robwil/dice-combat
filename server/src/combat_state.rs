@@ -37,7 +37,7 @@ impl CombatState {
                 client_phase: ClientPhase::Waiting,
                 combatants: vec![],
                 combat_log: vec![],
-            }
+            },
         }
     }
 }

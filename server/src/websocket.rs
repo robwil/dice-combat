@@ -1,17 +1,18 @@
-use std::sync::Mutex;
-use ws::Handshake;
-use crate::components::*;
-use crate::combatant::*;
+use std::cmp::Reverse;
 use crate::combat_state::*;
+use crate::combatant::*;
+use crate::components::*;
 use crate::events::*;
 use crate::log::*;
 use crate::shared::*;
 use crate::systems::*;
+use specs::RunNow;
 use specs::World;
 use specs::WorldExt;
-use specs::RunNow;
-use ws::{CloseCode, Handler, Message, Request, Response, Result, Sender};
 use std::sync::Arc;
+use std::sync::Mutex;
+use ws::Handshake;
+use ws::{CloseCode, Handler, Message, Request, Response, Result, Sender};
 
 pub struct Server {
     pub world: specs::World,
@@ -41,10 +42,14 @@ impl Handler for Connection {
         // send initial state to client
         let combat_state = server.world.read_resource::<CombatState>();
         println!("Server state: {:?}", *combat_state);
-        println!("Sending initial state to client: {:?}", server.materialized_state.clone());
-        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
-            .unwrap()
-            .into();
+        println!(
+            "Sending initial state to client: {:?}",
+            server.materialized_state.clone()
+        );
+        let server_msg: Message =
+            serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
+                .unwrap()
+                .into();
         self.out.send(server_msg)
     }
 
@@ -66,7 +71,10 @@ impl Handler for Connection {
         let server = self.server.lock().unwrap();
         let combat_state = server.world.read_resource::<CombatState>();
         println!("Server state: {:?}", *combat_state);
-        println!("Sending new state to client: {:?}", server.materialized_state.clone());
+        println!(
+            "Sending new state to client: {:?}",
+            server.materialized_state.clone()
+        );
         server_msg.map_or(Ok(()), |msg| self.out.broadcast(msg))
     }
 
@@ -104,7 +112,7 @@ impl Server {
         });
 
         let initial_state = get_materialized_state(&mut world);
-        let mut server = Server{
+        let mut server = Server {
             world,
             materialized_state: initial_state,
         };
@@ -121,16 +129,16 @@ impl Server {
         // we keep looping until materialized state does not change
         loop {
             // run ECS systems
-            let mut drafting_system = DraftingSystem{};
-            let mut rolling_system = RollingSystem{};
-            let mut action_system = ActionSystem{};
-            let mut materialize_system = MaterializeSystem{};
+            let mut drafting_system = DraftingSystem {};
+            let mut rolling_system = RollingSystem {};
+            let mut action_system = ActionSystem {};
+            let mut materialize_system = MaterializeSystem {};
             drafting_system.run_now(&self.world);
             rolling_system.run_now(&self.world);
             action_system.run_now(&self.world);
             materialize_system.run_now(&self.world);
             self.world.maintain();
-        
+
             // handle events
             {
                 let mut event_queue = self.world.write_resource::<EventQueue>();
@@ -158,17 +166,15 @@ impl Server {
 impl Connection {
     fn handle_text_message(&mut self, client_id: usize, msg: Message) -> Message {
         let txt = &msg.into_text().unwrap();
-        let client_msg: ClientMessage =
-            serde_json::from_str(txt).unwrap();
-    
+        let client_msg: ClientMessage = serde_json::from_str(txt).unwrap();
+
         println!(
             "Server received text message\ntext: '{}'\nfrom: '{}'\n",
             txt, client_id
         );
-        
-        
+
         let mut server = self.server.lock().unwrap();
-    
+
         // dispatch event/etc. based on incoming message
         match client_msg {
             ClientMessage::FinishDrafting(draft_choices) => {
@@ -176,8 +182,8 @@ impl Connection {
                 {
                     let mut event_queue = server.world.write_resource::<EventQueue>();
                     // process draft choices in reverse index order so we don't invalidate the indexes
-                    let mut sorted_choices = draft_choices.clone();
-                    sorted_choices.sort_by(|a, b| b.cmp(a));
+                    let mut sorted_choices = draft_choices;
+                    sorted_choices.sort_by_key(|&b| Reverse(b));
                     for choice in sorted_choices {
                         event_queue.new_events.push(Event::DraftDie(choice));
                     }
@@ -191,17 +197,17 @@ impl Connection {
         }
 
         server.game_loop();
-        
-        let server_msg: Message = serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
-            .unwrap()
-            .into();
+
+        let server_msg: Message =
+            serde_json::to_string(&ServerMessage::NewState(server.materialized_state.clone()))
+                .unwrap()
+                .into();
 
         server_msg
     }
-    
 }
 
 fn get_materialized_state(world: &mut specs::World) -> ClientGameState {
     let combat_state = world.read_resource::<CombatState>();
-    return combat_state.materialized_state.clone();
+    combat_state.materialized_state.clone()
 }
