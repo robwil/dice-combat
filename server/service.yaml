@@ -1,0 +1,36 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  annotations:
+    client.knative.dev/user-image: gcr.io/robwil-io/dice-combat
+    run.googleapis.com/ingress: all
+    run.googleapis.com/ingress-status: all
+    run.googleapis.com/launch-stage: BETA
+  labels:
+    cloud.googleapis.com/location: us-east4
+  name: dice-combat
+  namespace: '657567061984'
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/maxScale: '1000'
+        client.knative.dev/user-image: gcr.io/robwil-io/dice-combat
+        run.googleapis.com/client-name: gcloud
+        run.googleapis.com/client-version: 305.0.0
+      name: dice-combat-initial3
+    spec:
+      containerConcurrency: 80
+      containers:
+      - image: gcr.io/robwil-io/dice-combat
+        ports:
+        - containerPort: 9000
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 256Mi
+      timeoutSeconds: 300
+  traffic:
+  - latestRevision: true
+    tag: initial
+    percent: 100

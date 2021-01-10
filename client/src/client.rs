@@ -5,7 +5,11 @@ use std::rc::Rc;
 
 mod shared;
 
+#[cfg(debug_assertions)]
 const WS_URL: &str = "ws://127.0.0.1:9000/ws";
+
+#[cfg(not(debug_assertions))]
+const WS_URL: &str = "wss://initial---dice-combat-sxrrowqjgq-uk.a.run.app/ws";
 
 // ------ ------
 //     Model
