@@ -37,6 +37,16 @@ install_crate = { crate_name = "wasm-pack", binary = "wasm-pack", test_arg = "-V
 command = "wasm-pack"
 args = ["build", "--target", "web", "--out-name", "package"]
 
+# ---- DEPLOY ----
+[tasks.deploy]
+description = "Deploy release build to GCS"
+dependencies = ["build_release"]
+script = '''
+gsutil -h "Cache-Control:no-cache,max-age=0" cp index.html gs://staging.robwil.io/dice-combat/${@}/index.html
+gsutil -h "Cache-Control:no-cache,max-age=0" cp pkg/package.js gs://staging.robwil.io/dice-combat/${@}/pkg/
+gsutil -h "Cache-Control:no-cache,max-age=0" -h "Content-Type: application/wasm" cp pkg/package_bg.wasm gs://staging.robwil.io/dice-combat/${@}/pkg/
+'''
+
 # ---- LINT ----
 
 [tasks.clippy]

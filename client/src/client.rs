@@ -5,7 +5,11 @@ use std::rc::Rc;
 
 mod shared;
 
+#[cfg(debug_assertions)]
 const WS_URL: &str = "ws://127.0.0.1:9000/ws";
+
+#[cfg(not(debug_assertions))]
+const WS_URL: &str = "wss://initial---dice-combat-sxrrowqjgq-uk.a.run.app/ws";
 
 // ------ ------
 //     Model
@@ -121,11 +125,7 @@ fn update(msg: Msg, mut model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::FinishDrafting => model
             .web_socket
             .send_json(&ClientMessage::FinishDrafting(
-                model
-                    .drafted_dice
-                    .iter()
-                    .copied()
-                    .collect(),
+                model.drafted_dice.iter().copied().collect(),
             ))
             .unwrap(),
     }

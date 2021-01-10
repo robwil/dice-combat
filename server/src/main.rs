@@ -23,7 +23,7 @@ fn main() {
     qrand::srand(time.as_secs());
 
     let server = Arc::new(Mutex::new(websocket::Server::new()));
-    listen("127.0.0.1:9000", |out| websocket::Connection {
+    listen("0.0.0.0:9000", |out| websocket::Connection {
         server: Arc::clone(&server),
         out,
     })
