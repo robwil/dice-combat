@@ -5,6 +5,13 @@ Experimental dice combat game.
 - Server is responsible for maintaining the game state, and accepting inputs: 1) player input via WebSocket, 2) AI input.
 - Client is responsible for displaying the current game state, as well as giving 'local player' choices.
 
+## How to deploy
+
+Client
+```
+cargo make deploy <checkpoint name>
+```
+
 ## How to run locally
 
 Server (listens on port 9000)

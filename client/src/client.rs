@@ -121,11 +121,7 @@ fn update(msg: Msg, mut model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::FinishDrafting => model
             .web_socket
             .send_json(&ClientMessage::FinishDrafting(
-                model
-                    .drafted_dice
-                    .iter()
-                    .copied()
-                    .collect(),
+                model.drafted_dice.iter().copied().collect(),
             ))
             .unwrap(),
     }
